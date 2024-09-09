@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:LiftMonitor.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:main="clr-namespace:LiftMonitor.Views;assembly=LiftMonitor"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="400"
+        MaxHeight="400" MaxWidth="1000"
+        x:Class="LiftMonitor.Views.MainWindow"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="LiftMonitor">
+
+  <Design.DataContext>
+    <vm:MainWindowViewModel/>
+  </Design.DataContext>
+
+  <main:MainView/>
+</Window>
