@@ -1,8 +1,8 @@
 ﻿using Avalonia.Threading;
-using LiftMonitor.Models;
 using ReactiveUI;
+using System;
+using System.Reactive;
 using System.Threading;
-using System.Windows.Input;
 
 namespace LiftMonitor.ViewModels
 {
@@ -10,13 +10,19 @@ namespace LiftMonitor.ViewModels
     {
         private object _locker;
 
-        private int _sleepingTime = 3000;
+        private int _currentFloor;
+
+        private int _sleepingTime;
 
         private string _information;
 
-        private Direction _direction;
-
         private Semaphore _semaphore;
+
+        public int CurrentFloor
+        {
+            get => _currentFloor;
+            set => this.RaiseAndSetIfChanged(ref _currentFloor, value);
+        }
 
         public string Information
         {
@@ -24,95 +30,93 @@ namespace LiftMonitor.ViewModels
             set => this.RaiseAndSetIfChanged(ref _information, value);
         }
 
-        public ICommand UpCommand { get; }
-
-        public ICommand DownCommand { get; }
+        public ReactiveCommand<int, Unit> CallLiftCommand { get; }
 
         public MainWindowViewModel()
         {
             _locker = new();
-            _information = "";
-            _semaphore = new Semaphore(1, 5);
-            UpCommand = ReactiveCommand.Create(Up);
-            DownCommand = ReactiveCommand.Create(Down);
+            _information = string.Empty;
+            _sleepingTime = 750;
+            _semaphore = new Semaphore(1, 1);
+            CurrentFloor = 1;
+            CallLiftCommand = ReactiveCommand.Create<int>(CallLift);
         }
 
-        private void Up() => NewFloorRequest(Direction.Up);
-
-        private void Down() => NewFloorRequest(Direction.Down);
-
-        private void NewFloorRequest(Direction newDirection)
-            => new Thread(CalculateNewFloor_Semaphore).Start(newDirection);
-
-        private void CalculateNewFloor_Monitor(object? newDirectionObject)
+        private void CallLift(int floor)
         {
-            if (newDirectionObject is Direction newDirection)
+            Information += $"Lift call to {floor}\n";
+            NewFloorRequest(floor);
+        }
+
+        private void NewFloorRequest(int newFloor)
+            //=> new Thread(CalculateNewFloor_Monitor).Start(newFloor);
+            => new Thread(CalculateNewFloor_Semaphore).Start(newFloor);
+
+        private void CalculateNewFloor_Monitor(object? obj)
+        {
+            if (obj is not int newFloor)
             {
-                var threadName = Thread.CurrentThread.ManagedThreadId.ToString();
-
-                Dispatcher.UIThread.Invoke(() =>
-                {
-                    Information += $"Thread {threadName} wont to enter in critical section (Monitor) newDirection : {newDirection}\n";
-                });
-
-                if (_direction == Direction.None || _direction == newDirection)
-                {
-                    lock (_locker)
-                    {
-                        Dispatcher.UIThread.Invoke(() =>
-                        {
-                            Information += $"Thread {threadName} in critical section (Monitor) newDirection : {newDirection}\n";
-                        });
-
-                        _direction = newDirection;
-                        // we have a huge proccessing
-                        Thread.Sleep(_sleepingTime);
-
-                        _direction = Direction.None;
-
-                        Dispatcher.UIThread.Invoke(() =>
-                        {
-                            Information += $"Thread {threadName} exit from critical section (Monitor) newDirection : {newDirection}\n";
-                        });
-                    }
-                }
+                return;
             }
-        }
 
-        private void CalculateNewFloor_Semaphore(object? newDirectionObject)
-        {
-            if (newDirectionObject is Direction newDirection)
+            var threadName = Environment.CurrentManagedThreadId.ToString();
+            Dispatcher.UIThread.Invoke(() =>
             {
-                var threadName = Thread.CurrentThread.ManagedThreadId.ToString();
+                Information += $"Thread {threadName} :: call floor {newFloor}\n";
+            });
 
+            lock (_locker)
+            {
                 Dispatcher.UIThread.Invoke(() =>
                 {
-                    Information += $"Thread {threadName} wont to enter in critical section (Semaphore) newDirection : {newDirection}\n";
+                    Information += $"Thread {threadName} is entered in critical section (Monitor):: floor {newFloor}\n\n";
                 });
+                int flag = newFloor > CurrentFloor ? 1 : -1;
 
-                if (_direction == Direction.None || _direction == newDirection)
+                for (; CurrentFloor != newFloor; CurrentFloor += flag)
                 {
-                    _semaphore.WaitOne();
-
-                    Dispatcher.UIThread.Invoke(() =>
-                    {
-                        Information += $"Thread {threadName} in critical section (Semaphore) newDirection : {newDirection}\n";
-                    });
-
-                    _direction = newDirection;
-                    // we have a huge proccessing
                     Thread.Sleep(_sleepingTime);
-
-                    _direction = Direction.None;
-                    Dispatcher.UIThread.Invoke(() =>
-                    {
-                        Information += $"Thread {threadName} exit from critical section (Semaphore) newDirection : {newDirection}\n";
-                    });
-
-                    _semaphore.Release();
                 }
+
+                Dispatcher.UIThread.Invoke(() =>
+                {
+                    Information += $"Thread {threadName} is exit in critical section (Monitor):: floor {newFloor}\n\n";
+                });
             }
         }
 
+        private void CalculateNewFloor_Semaphore(object? obj)
+        {
+            if (obj is not int newFloor)
+            {
+                return;
+            }
+
+            var threadName = Environment.CurrentManagedThreadId.ToString();
+            Dispatcher.UIThread.Invoke(() =>
+            {
+                Information += $"Thread {threadName} :: call floor {newFloor}\n";
+            });
+
+
+            _semaphore.WaitOne();
+            int flag = newFloor > CurrentFloor ? 1 : -1;
+
+            Dispatcher.UIThread.Invoke(() =>
+            {
+                Information += $"Thread {threadName} is entered in critical section (Semaphore):: floor {newFloor}\n\n";
+            });
+
+            for (; CurrentFloor != newFloor; CurrentFloor += flag)
+            {
+                Thread.Sleep(_sleepingTime);
+            }
+
+            Dispatcher.UIThread.Invoke(() =>
+            {
+                Information += $"Thread {threadName} is exit in critical section (Semaphore):: floor {newFloor}\n\n";
+            });
+            _semaphore.Release();
+        }
     }
 }
